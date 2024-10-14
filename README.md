@@ -180,5 +180,30 @@ The model re-fiting is accomplished by setting the model parameters of the previ
 
 By default, hidden states are utilized to partition the higher-dimensional space into distinct regimes, but (for now) they dont have any representation. 
 To classify the hidden states we can evaluate the statistics of the features used in the HMM model determination.
+We can achieve this by running "_PlotResultsGIT.py_". 
+The figure below shows a 3-4D space (volatility represented by the size of the dots) of the 4 input variables and their respective position
+![image](https://github.com/user-attachments/assets/2643e436-15b5-4cdf-8079-781f903c3e60)
 
-file:///C:/Users/Luan/Desktop/PortfolioMonitor/HMMScenario/HMMModelGit/scatter_plot.html  
+We can observe that Hidden State (HS) 1 is characteristic of periods of higher inflation while the remaining dots are more of low to normal volatility. 
+Furthermore HS 2 is characterized of periods of lower volatility and an average market return, suggesting moments of trending bull markets. 
+HS 4 is characterized by periods of lower returns and also lower INDPRO, associated with periods of economic contraction 
+Finally, HS 3 is characterized by the periods with the highest level of the VIX. 
+
+Hidden States	INDPRO		CPI		Market Returns		Market Volatility	
+	count	mean	count	mean	count	mean	count	mean
+1	49	0.0%	49	5.8%	49	0.6%	49	20.9
+2	191	0.2%	191	2.4%	191	1.0%	191	14.1
+3	139	0.2%	139	2.5%	139	0.6%	139	22.8
+4	34	-0.5%	34	1.2%	34	0.1%	34	34.8
+![image](https://github.com/user-attachments/assets/dc948cb1-896e-46bb-96f2-51fe83be6c85)
+
+Furthermore we can inspect how these HS's relate with market performance over time, by plotting theem in relation to the SP500 performance. 
+
+![hidden states](https://github.com/user-attachments/assets/c4b52539-721d-40a9-a552-949981a0eaea)
+
+As expected, HS 2 periods are typical of trending markets. HS 3 associated with periods of higher volatility, with a positive or negative direction. HS 1, related with a higher level of inflation is characterized of periods of lower market performance.
+
+
+
+
+

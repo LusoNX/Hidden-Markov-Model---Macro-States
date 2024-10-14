@@ -179,4 +179,6 @@ The model re-fiting is accomplished by setting the model parameters of the previ
 # Hidden States Statistics
 
 By default, hidden states are utilized to partition the higher-dimensional space into distinct regimes, but (for now) they dont have any representation. 
-To classify the hidden states. 
+To classify the hidden states we can evaluate the statistics of the features used in the HMM model determination.
+
+file:///C:/Users/Luan/Desktop/PortfolioMonitor/HMMScenario/HMMModelGit/scatter_plot.html  

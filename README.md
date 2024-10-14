@@ -89,6 +89,7 @@ in order to account for the lag of the data for a given month. The market return
 The helper_optimal_states method helps determine the optimal number of hidden states for the HMM by fitting models with varying state counts (between 2 and 10), calculating the Bayesian Information Criterion (BIC) for each model, and selecting the model with the lowest BIC score. This approach ensures the best-fitting model based on both likelihood and complexity, guiding the selection of the optimal number of hidden states.
 
 ''' python 
+
     def helper_optimal_states(self,observed_data):
 
         # Helper function used to determined the optimal number of states for the scenario prediction.
@@ -119,3 +120,63 @@ The helper_optimal_states method helps determine the optimal number of hidden st
         return optimal_n_states
 
 
+
+Hidden states are estimated on a expanding window method, where at each month, new data is fitted into the previously trained model. A _test_date_ is set to define the  batch of data used for the initial training iteration. 
+
+ ''' python 
+
+     def HMMScenariosTrainTest(self,hmm_model,_frequency,test_date):
+
+        scaler = StandardScaler()
+        if hmm_model == "Macro":
+            df = self.MacroVariables(_frequency)
+                            
+
+        test_date_adj = pd.to_datetime(test_date)
+        train_df = df[df.index < test_date_adj]
+
+        #optimal_nr_scenarios = self.helper_optimal_states(scaler.fit_transform(train_df)) # Helper function to determine the optimal nr of scenarios 
+        optimal_scenarios = {"Macro":4,"Market":4}
+
+        test_df =df[df.index >= test_date_adj]
+        train_df  = train_df.sort_index()
+        test_df = test_df.sort_index()
+        dict_of_inputs = {}
+            
+        
+        # Initialized an empty model. Required to maintain consistency over each new iteration 
+        prev_model = None
+        nr_of_scenario_failures = 0 
+
+
+The model re-fiting is accomplished by setting the model parameters of the previous iteration in the subsequent iteration, re-fitting the model and repeating the process. Over time, the transition matrix and state means converge towars their long term equilibrium, but the process ensures that "future" data is not embedded in the fitting of the model. 
+
+''' python 
+
+    for i in range(len(test_df)+1):
+        df_new = pd.concat([train_df,test_df.iloc[0:0+i]])
+        _date = df_new.index.values[-1]
+        _date =_date + pd.offsets.MonthEnd(0)
+        date_str = _date.strftime("%Y-%m-%d")
+        
+    
+        if i == 0:
+            scaled_values = scaler.fit_transform(df_new)
+            model = hmm.GaussianHMM(n_components=optimal_scenarios[hmm_model], covariance_type="full",init_params="mc",params="stmcm",n_iter=10000,random_state=42)
+            n_components = model.n_components
+            model.startprob_ = np.full(n_components, 1 / n_components)
+            model.transmat_ = np.full((n_components, n_components), 1 / n_components)
+    
+        else:
+            scaled_values = scaler.fit_transform(df_new)
+            model = hmm.GaussianHMM(n_components=optimal_scenarios[hmm_model], covariance_type="full",params="stmcm",init_params="",n_iter=10000,random_state = 42)           
+            model.startprob_  = prev_startprob
+            model.transmat_ = prev_transmat
+            model.means_ = prev_means
+
+
+
+# Hidden States Statistics
+
+By default, hidden states are utilized to partition the higher-dimensional space into distinct regimes, but (for now) they dont have any representation. 
+To classify the hidden states. 

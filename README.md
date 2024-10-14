@@ -205,5 +205,9 @@ As expected, HS 2 periods are typical of trending markets. HS 3 associated with 
 
 
 
+# Portfolio Optimization
+
+# Backtest Results
+
 
 

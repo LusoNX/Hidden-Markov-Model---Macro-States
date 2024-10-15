@@ -182,32 +182,269 @@ By default, hidden states are utilized to partition the higher-dimensional space
 To classify the hidden states we can evaluate the statistics of the features used in the HMM model determination.
 We can achieve this by running "_PlotResultsGIT.py_". 
 The figure below shows a 3-4D space (volatility represented by the size of the dots) of the 4 input variables and their respective position
-![image](https://github.com/user-attachments/assets/2643e436-15b5-4cdf-8079-781f903c3e60)
+
+
+### 4-D plot of the four features by HS
+![image](https://github.com/user-attachments/assets/1305c800-d2a0-4c9d-b42e-4311c3d0740c)
+
 
 We can observe that Hidden State (HS) 1 is characteristic of periods of higher inflation while the remaining dots are more of low to normal volatility. 
 Furthermore HS 2 is characterized of periods of lower volatility and an average market return, suggesting moments of trending bull markets. 
 HS 4 is characterized by periods of lower returns and also lower INDPRO, associated with periods of economic contraction 
 Finally, HS 3 is characterized by the periods with the highest level of the VIX. 
 
-Hidden States	INDPRO		CPI		Market Returns		Market Volatility	
-	count	mean	count	mean	count	mean	count	mean
-1	49	0.0%	49	5.8%	49	0.6%	49	20.9
-2	191	0.2%	191	2.4%	191	1.0%	191	14.1
-3	139	0.2%	139	2.5%	139	0.6%	139	22.8
-4	34	-0.5%	34	1.2%	34	0.1%	34	34.8
+
+### Mean values of the four features by HS
 ![image](https://github.com/user-attachments/assets/dc948cb1-896e-46bb-96f2-51fe83be6c85)
 
 Furthermore we can inspect how these HS's relate with market performance over time, by plotting theem in relation to the SP500 performance. 
 
+
+### HS over the SP500
 ![hidden states](https://github.com/user-attachments/assets/c4b52539-721d-40a9-a552-949981a0eaea)
 
 As expected, HS 2 periods are typical of trending markets. HS 3 associated with periods of higher volatility, with a positive or negative direction. HS 1, related with a higher level of inflation is characterized of periods of lower market performance.
 
 
-
 # Portfolio Optimization
 
-# Backtest Results
+The optimization process consists in finding the optimal weights for a portfolio combination (overtime) for 4 factors, namely _Momentum_, _Low Volatility_, _Value_ and _Growth_.
+
+## Mean Returns 
+Means and covariance matrices are computed based on returns contained within each hidden state. The goal is in **finding the optimal portfolios conditioned to their HS**. 
+For the mean, i compute the Exponential Weighted Moving Average (EWMA) of returns using a 6 week span (for weekly testing) and 3 month span (for monthly testing). EWMA is used to smooth the returns  by giving more weight to recent observations, making it sensitive to recent changes.
+
+
+
+'''python 
+
+	_span_dict = {"W":6,"M":3}
+	for _scenario in df_merge["hidden_states"].unique():
+                df_merge_scenario = df_merge[df_merge["hidden_states"] == _scenario]
+                df_merge_D_scenario =df_merge_D[df_merge_D["hidden_states"] == _scenario]
+                df_merge_scenario = df_merge_scenario.loc[~(df_merge_scenario == 0).any(axis=1)]
+                df_merge_scenario.iloc[:,:-1] = df_merge_scenario.iloc[:,:-1].ewm(span=_span_dict[price_frequency], adjust=False).mean()
+
+## Covariance of Returns
+
+Covariance Matrix of the returns is calculated using Random Matrix Theory (RMT), through the Marchenko-Pastur theorem and consists in finding the most relevant eigenvalues of the correlation matrix and filtering out for the most significant eigenvalues, reducing the amount of noise in the data. Furthermore, the approach eliminates multicolinearity, since the retrieved eigenvectors are uncorrelated with one another, further improving the final matrix. 
+
+'''python 
+
+	def helper_covariance_parameters(self,DF,cov_type,_freq):
+	        from pypfopt import risk_models
+	        df = DF.copy()
+	        dict_freq = {"D":250,"W":52,"M":12}
+	
+	        if cov_type == "normal":
+	            port_cov = risk_models.sample_cov(df,returns_data = True, frequency = dict_freq[_freq])
+	        elif cov_type == "shrinkage":
+	            port_cov = risk_models.CovarianceShrinkage(df,returns_data = True, frequency = dict_freq[_freq]).ledoit_wolf()
+	        
+	        elif cov_type == "random_matrix":
+	            #Model that employs the Random Matrix format where eigen values are removed using the rule of  Marchenko and Pasteur
+	            
+	            correlation_matrix = df.corr()
+	            eigenvalues, eigenvectors = np.linalg.eigh(correlation_matrix)
+	            q = len(df) / len(df.columns)  # λ = m/n
+	            sigma = 1 
+	            lambda_plus = sigma**2 * (1 + (1/np.sqrt(q)))
+	            lambda_minus = sigma**2 * (1 - (1/np.sqrt(q)))
+	
+	            # Step 4: Filter Eigenvalues (keep only significant ones)
+	            filtered_eigenvalues = np.where(eigenvalues > lambda_plus, eigenvalues, 0)
+	            #print(eigenvalues)
+	            #print(eigenvectors)
+	            
+	            filtered_correlation_matrix = (eigenvectors @ np.diag(filtered_eigenvalues) @ eigenvectors.T)
+	            filtered_correlation_matrix[np.diag_indices_from(filtered_correlation_matrix)] = 1
+	            volatilities = np.std(df, axis=0)
+	
+	            # Rescale the filtered correlation matrix by the volatilities
+	            filtered_covariance_matrix = filtered_correlation_matrix * np.outer(volatilities, volatilities)  
+	            port_cov = pd.DataFrame(filtered_covariance_matrix, index=list(df.columns), columns=list(df.columns))
+	                                
+	    
+	        return port_cov
+
+
+## Optimization Function 
+
+For the optimization process, a custom Module is created _CustomOptimizer.py_ in order to solve for the optimal portfolio, that take the mean returns and covariance matrix as inputs. 
+
+''' python 
+
+	def solve_sharpe_ratio(self, RET, COV, risk_free_rate, risk_target_value, lambda_reg, max_weight,min_weight):
+	        # Number of assets
+	        n = len(RET)
+	        
+	        # Define the variable: weights of the assets in the portfolio
+	        w = cp.Variable(n)
+	        
+	        # Define the expected return of the portfolio
+	        portfolio_return = RET @ w
+	        
+	        # Define the risk (variance) of the portfolio
+	        portfolio_variance = cp.quad_form(w, COV)
+	        l2_regularization = lambda_reg * cp.sum_squares(w)
+	        
+	        # Define the objective: maximize the expected return
+	        objective = cp.Maximize(portfolio_return - l2_regularization)
+	        
+	        # Define the constraints
+	        constraints = [
+	            cp.sum(w) == 1,  # Sum of weights equals 1
+	            w >= 0,          # Long-only constraint
+	            portfolio_variance <= risk_target_value  # Variance constraint
+	        ]
+	        
+	        # Add maximum weight constraint if provided
+	        if max_weight is not None:
+	            constraints += [w <= max_weight]
+	        
+	        # Define the problem
+	        problem = cp.Problem(objective, constraints)
+	        problem.solve(solver=cp.ECOS, qcp=True)  # Indicate that the problem is a QCP
+	        
+	        return w.value, portfolio_return.value, portfolio_variance.value
+
+CVXPY is used in the construction of the optimizer. The optimization solves for the maximization of the portfolio_return adjusted by a ridge penalty term - the L2 regularization norm. This prevents the model of finding corner solution, ensuring a higher degree of diversification across the optimizations. 
+
+However, the main objective is not in maximizing returns, but rather the sharpe ratio of the portfolio. But since CVXPY is not suitable to handle non-convext expression, a workaround is done, by setting a given level of volatility, defined by the parameter _risk_target_value_, and iterating over various level of volatilities in the main function, that calls out the function. 
+
+''' python 
+
+	def optimize_sharpe_ratio(self, RET, COV, risk_free_rate, lambda_reg, max_weight=None,min_weight = None,long_short=False):
+	        risk_targets = np.linspace(0.01, 0.30, 30)
+	        risk_targets = risk_targets**2  # Square the risk targets to represent variance targets
+	
+	        # Placeholder for the best Sharpe ratio and corresponding weights
+	        best_sharpe_ratio = -np.inf
+	        best_weights = None
+	        
+	        # Iterate over the given risk targets
+	        for risk_target_value in risk_targets:
+	            if long_short == False:
+	                weights, expected_return, variance = self.solve_sharpe_ratio(
+	                    RET, COV, risk_free_rate, risk_target_value, lambda_reg, max_weight,min_weight
+	                )
+	            else:
+	                weights, expected_return, variance = self.solve_sharpe_ratio_LS(
+	                    RET, COV, risk_free_rate, risk_target_value, lambda_reg, max_weight,min_weight
+	                )
+	                        
+	            if weights is not None:
+	                # Calculate the Sharpe ratio
+	                risk = np.sqrt(variance)  # Use standard deviation (sqrt of variance)
+	                sharpe_ratio = (expected_return - risk_free_rate) / risk
+	                
+	                # Update the best Sharpe ratio and corresponding weights if current Sharpe ratio is better
+	                if sharpe_ratio > best_sharpe_ratio:
+	                    best_sharpe_ratio = sharpe_ratio
+	                    best_weights = weights
+	        
+	        return best_weights
+
+
+The portfolio that maximizes the sharpe ratio is selected. The following figure ilustrates the weights over times and their respective concentration in the portfolio - measured using the Herfindahl-Hirschman Index (HHI) approach
+
+### Optimal Weights Overtime
+![image](https://github.com/user-attachments/assets/c1956250-6d89-4c32-894f-56da5a717d5f)
+
+### HHI - Portfolio Concentration 
+
+![image](https://github.com/user-attachments/assets/ff575e56-fc34-4991-a062-2837a73e6e81)
+
+
+As we can observe, the portefolio is relatively concentrated, but spread out over the factors over extended periods of time, with some exceptions where HHI surpasses the 0.7 band. 
+
+
+# Backtest
+
+For the backtest, weights are shifted by 1, to account for the previous week/month return in the calculation of the current week/month performance . However, this approach implicitly assumes that positions are opened at the closing price of the previous week/month.
+Thus, for each given point in time, we estimate the HS, using the four (past) values of the 4 input variables  (CPI, INDPRO, VIX and Market Returns). From this, we estimate the optimal portfolios, conditioned to that HS and shift them by 1. This prevents the "look ahead bias" at both scenario estimation and performance estimation. 
+
+''' python
+	def backtest_performance(self,DF_W,_frequency):
+	        import matplotlib.pyplot as plt
+	        df_w = DF_W.copy()
+	        df_w = df_w.sort_index()
+	        df_prices = pd.read_csv(rf"{self.cur_dir}\DATA\PRICE_DATA.csv",index_col = 0)
+	        df_prices.index = pd.to_datetime(df_prices.index)
+	        df_prices = df_prices.resample(_frequency).last()
+	        df_prices =df_prices.pct_change()
+	        df_prices = df_prices.iloc[1::]
+	
+	        # Shift 1 month in order to match the weights estimate at a given data with the subsequent performance of the respective factor
+	        df_w = df_w.shift(1)
+	        df_w = df_w.iloc[1::]
+	        df_w.index = pd.to_datetime(df_w.index)
+	        df_w = df_w.resample(_frequency).last()
+	        df_prices = df_prices[(df_prices.index >= df_w.index.values[0]) & (df_prices.index <= df_w.index.values[-1])]
+
+
+
+### Backtest Results
+
+For the backtest, the training period for the HS starts in 2009-01-01, while the estimation of the returns and covariances begins in 2010-01-01 using data starting in 1995. 
+Benchmark is the SP500.
+
+'''python 
+
+	def main():
+	    _price_frequency = "W"
+	    _scenario_frequency = "M"
+	    _estimation_test_date = "2010-01-01"
+	    _scenario_test_date = "2009-01-01"
+	
+	    model_estimation = ModelEstimation()
+	    model_inputs_dict = model_estimation.ESTIMATION_MODEL(estimation_model = "Simple Average",
+	                               estimation_test_date=_estimation_test_date,price_frequency=_price_frequency,scenario_frequency=_scenario_frequency,
+	                               scenario_test_date=_scenario_test_date)
+	
+	    df_weights = model_estimation.PORT_OPTIMIZATION(model_inputs_dict,"MAX SHARPE")[0]  
+	    df_comparison = model_estimation.backtest_performance(df_weights,_price_frequency)[0]
+	    return df_comparison
+
+
+
+### Accumulated Performance over time (Strategy vs. Benchmark) 
+![image](https://github.com/user-attachments/assets/625c2d3f-e7a3-407d-9489-489cdde44c04)
+
+
+### Performance Stats over time. 
+      accumulated_return_strategy  accumulated_return_bench  difference
+Year
+2010                        12.44                     12.70       -0.26
+**2011                         3.76                      0.68        3.08**
+2012                        11.57                     10.84        0.73
+2013                        31.47                     31.30        0.17
+2014                        17.31                     13.43        3.88
+**2015                         3.28                     -1.33        4.61**
+2016                        11.23                      9.84        1.39
+2017                        24.71                     18.10        6.61
+**2018                        -4.52                     -7.03        2.50**
+2019                        31.45                     30.34        1.10
+2020                        16.07                     14.29        1.78
+2021                        23.57                     27.62       -4.05
+**2022                       -14.96                    -18.64        3.68**
+2023                        22.26                     24.06       -1.80
+2024                        22.34                     18.42        3.92
+
+
+Overall Performance Comparison:
+
+Strategy:
+Accumulated Return: 5.5847
+Volatility: 0.0746
+Skew: -0.6182
+
+Benchmark:
+Accumulated Return: 4.0654
+Volatility: 0.0780
+Skew: -0.5433
+
+
 
 
 

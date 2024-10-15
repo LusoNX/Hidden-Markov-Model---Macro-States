@@ -413,36 +413,26 @@ Benchmark is the SP500.
 
 
 ### Performance Stats over time. 
-      accumulated_return_strategy  accumulated_return_bench  difference
-Year
-2010                        12.44                     12.70       -0.26
-**2011                         3.76                      0.68        3.08**
-2012                        11.57                     10.84        0.73
-2013                        31.47                     31.30        0.17
-2014                        17.31                     13.43        3.88
-**2015                         3.28                     -1.33        4.61**
-2016                        11.23                      9.84        1.39
-2017                        24.71                     18.10        6.61
-**2018                        -4.52                     -7.03        2.50**
-2019                        31.45                     30.34        1.10
-2020                        16.07                     14.29        1.78
-2021                        23.57                     27.62       -4.05
-**2022                       -14.96                    -18.64        3.68**
-2023                        22.26                     24.06       -1.80
-2024                        22.34                     18.42        3.92
+
+
 
 
 Overall Performance Comparison:
 
 Strategy:
-Accumulated Return: 5.5847
-Volatility: 0.0746
-Skew: -0.6182
+
+- Accumulated Return: 5.5847 
+
+- Volatility: 0.0746
+
+- Skew: -0.6182
 
 Benchmark:
-Accumulated Return: 4.0654
-Volatility: 0.0780
-Skew: -0.5433
+- Accumulated Return: 4.0654
+
+- Volatility: 0.0780
+
+- Skew: -0.5433
 
 
 
